@@ -3,8 +3,101 @@ title: "p8105_hw6_yw4660"
 output: html_document
 ---
 
-```{r}
+```{r import library, include=FALSE}
 library(tidyverse)
 library(ggplot2)
 ```
-
+#### Problem 1
+```{r}
+homicides <- read_csv(
+  "data/homicide-data.csv",
+  locale = locale(encoding = "ISO-8859-1")
+)
+#skimr::skim(homicides)
+homicides <- homicides |>
+  mutate(
+    city_state = paste(city, state, sep = ", "),
+    solved = disposition == "Closed by arrest",
+    victim_age  = as.numeric(victim_age)
+  ) |>
+  
+  filter(
+    !(city_state %in% c("Dallas, TX", "Phoenix, AZ",
+                        "Kansas City, MO", "Tulsa, AL"))
+  ) |>
+  filter(victim_race %in% c("White", "Black")) |>
+  filter(victim_sex %in% c("Male", "Female")) |>
+  filter(
+    !is.na(solved),
+    !is.na(victim_age),
+    !is.na(victim_sex),
+    !is.na(victim_race)
+  ) |>
+  mutate(
+    victim_sex  = fct_relevel(victim_sex, "Female"),
+    victim_race = fct_relevel(victim_race, "White")
+  )
+# logistic regression for baltimore
+baltimore <- homicides |>
+  filter(city_state == "Baltimore, MD")
+baltimore_glm <- glm(
+  solved ~ victim_age + victim_sex + victim_race,
+  data   = baltimore,
+  family = binomial()
+)
+baltimore_or <- broom::tidy(baltimore_glm, conf.int = TRUE) |>
+  mutate(
+    or     = exp(estimate),
+    or_low = exp(conf.low),
+    or_hi  = exp(conf.high)
+  ) |>
+  filter(term == "victim_sexMale") |>
+  select(term, or, or_low, or_hi)
+baltimore_or
+# glm for cities
+city_models <- homicides |>
+  nest(data = -city_state) |>
+  mutate(n = map_int(data, nrow),
+     model = map(data,
+      ~ glm(
+        solved ~ victim_age + victim_sex + victim_race,
+        data   = .x,
+        family = binomial()
+        )
+    ),
+     results = map(
+      model,
+      ~ broom::tidy(.x, conf.int = TRUE) |>
+        mutate(
+          or     = exp(estimate),
+          or_low = exp(conf.low),
+          or_hi  = exp(conf.high)
+        )
+    )
+  )
+city_or <- city_models |>
+  select(city_state, n, results) |>
+  unnest(results) |>
+  filter(term == "victim_sexMale") |>
+  select(city_state, n, or, or_low = or_low, or_hi = or_hi)
+  
+city_or |>
+  arrange(desc(or)) |>
+  print(n = 10)
+# plot of or
+city_or |>
+  mutate(
+    city_state = fct_reorder(city_state, or)
+  ) |>
+  ggplot(aes(x = or, y = city_state)) +
+  geom_point() +
+  geom_errorbar(aes(xmin = or_low, xmax = or_hi), width = 0.2) +
+  geom_vline(xintercept = 1, linetype = "dashed") +
+  labs(
+    x = "Adjusted odds ratio (Male vs Female)",
+    y = "City",
+    title = "Adjusted OR for solving homicides by victim sex\n(controls: age, race)"
+  ) +
+  theme_minimal()
+```
+#### Problem 2
