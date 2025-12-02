@@ -8,7 +8,7 @@ library(tidyverse)
 library(ggplot2)
 ```
 #### Problem 1
-```{r}
+```{r p1}
 homicides <- read_csv(
   "data/homicide-data.csv",
   locale = locale(encoding = "ISO-8859-1")
@@ -100,4 +100,88 @@ city_or |>
   ) +
   theme_minimal()
 ```
+
 #### Problem 2
+
+```{r p2 bootstrap distribution}
+library(tidyverse)
+library(p8105.datasets)
+library(broom)
+library(modelr) 
+
+data("weather_df")
+
+weather_boot_df <- weather_df |>
+  select(tmax, tmin, prcp) |>
+  drop_na()
+
+set.seed(42)
+n_boot <- 5000
+
+boot_results <- weather_boot_df |>
+  modelr::bootstrap(n = n_boot) |>
+  mutate(
+    model = map(strap, ~ lm(tmax ~ tmin + prcp, data = as_tibble(.x))),
+    glance = map(model, glance),
+    tidy   = map(model, tidy),
+    
+    # r2
+    r_squared = map_dbl(glance, "r.squared"),
+    # beta
+    beta_ratio = map_dbl(
+      tidy,
+      ~ {
+        coefs <- .x |>
+          filter(term %in% c("tmin", "prcp")) |>
+          select(term, estimate)
+        
+        b1 <- coefs |> filter(term == "tmin") |> pull(estimate)
+        b2 <- coefs |> filter(term == "prcp") |> pull(estimate)
+        
+        b1 / b2
+      }
+    )
+  ) |>
+  select(.id, r_squared, beta_ratio)
+
+# boot_results |> head()
+
+boot_results |>
+  pivot_longer(
+    cols = c(r_squared, beta_ratio),
+    names_to = "quantity",
+    values_to = "estimate"
+  ) |>
+  mutate(
+    quantity = recode(
+      quantity,
+      r_squared = "R^2",
+      beta_ratio = "beta1 / beta2"
+    )
+  ) |>
+  ggplot(aes(x = estimate)) +
+  geom_histogram(bins = 50) +
+  facet_wrap(~ quantity, scales = "free") +
+  labs(
+    x = "Bootstrap estimate",
+    y = "Count",
+    title = "Bootstrap distributions for R^2 and beta1 / beta2"
+  ) +
+  theme_minimal()
+```
+The bootstrap distribution of $R^2$ is approximately symmetric and very concentrated around 0.942, indicating that tmin and prcp together explain a large and fairly stable proportion of the variability in tmax. The bootstrap distribution of $\frac{\hat{\beta}_1}{\hat{\beta}_2}$ is centered around about −180, with a noticeably wider spread, suggesting more uncertainty in this ratio of coefficients.
+```{r p2 confidence interval}
+boot_summary <- boot_results |>
+  summarise(
+    r2_mean    = mean(r_squared),
+    r2_ci_low  = quantile(r_squared, 0.025),
+    r2_ci_high = quantile(r_squared, 0.975),
+    
+    ratio_mean    = mean(beta_ratio),
+    ratio_ci_low  = quantile(beta_ratio, 0.025),
+    ratio_ci_high = quantile(beta_ratio, 0.975)
+  )
+
+boot_summary
+```
+Based on the bootstrap samples, the 95% percentile confidence interval for $R^2$ is roughly (0.935, 0.947), and the corresponding interval for $\frac{\hat{\beta}_1}{\hat{\beta}_2}$ is approximately (−281, −125). These intervals summarize the sampling variability of the two quantities under the bootstrap procedure.
