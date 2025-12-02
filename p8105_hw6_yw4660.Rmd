@@ -185,3 +185,119 @@ boot_summary <- boot_results |>
 boot_summary
 ```
 Based on the bootstrap samples, the 95% percentile confidence interval for $R^2$ is roughly (0.935, 0.947), and the corresponding interval for $\frac{\hat{\beta}_1}{\hat{\beta}_2}$ is approximately (−281, −125). These intervals summarize the sampling variability of the two quantities under the bootstrap procedure.
+
+#### Problem3
+
+```{r p3}
+birth <- read.csv("data/birthweight.csv")
+
+birth_clean <- birth |>
+  mutate(
+    babysex = factor(babysex, levels = c(1,2), labels = c("male","female")),
+    frace   = factor(frace),
+    mrace   = factor(mrace),
+    malform = factor(malform, levels = c(0,1), labels = c("absent","present")),
+    parity  = factor(parity),
+    fincome = as.numeric(fincome),
+    gaweeks = as.numeric(gaweeks)
+  ) |>
+  drop_na()
+# skimr::skim(birth_clean)
+# glimpse(birth_clean)
+```
+
+### model a
+
+```{r model a}
+mod_A <- lm(
+  bwt ~ babysex + blength + gaweeks + ppbmi + smoken + fincome + mrace,
+  data = birth_clean
+)
+
+summary(mod_A)
+# add prediction and residual
+birth_clean|>
+  add_predictions(mod_A) |>
+  add_residuals(mod_A) |>
+  ggplot(aes(x = pred, y = resid)) +
+  geom_point(alpha = 0.4) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(
+    title = "Residuals vs fitted values for Model A",
+    x = "Fitted birthweight",
+    y = "Residuals"
+  ) +
+  theme_minimal()
+```
+
+### model b and model c
+
+```{r model b and model c}
+mod_B <- lm(
+  bwt ~ blength + gaweeks,
+  data = birth_clean
+)
+
+mod_C <- lm(
+  bwt ~ bhead * blength * babysex,
+  data = birth_clean
+)
+summary(mod_B)
+summary(mod_C)
+```
+
+### cv
+
+```{r cv}
+set.seed(42)
+
+cv_df <- crossv_mc(birth_clean, n = 100)
+
+cv_results <- cv_df |>
+  mutate(
+    train = map(train, as_tibble),
+    test  = map(test,  as_tibble),
+
+    fit_A = map(train, ~ lm(
+      bwt ~ babysex + blength + gaweeks + ppbmi + smoken + fincome + mrace,
+      data = .x)),
+    fit_B = map(train, ~ lm(
+      bwt ~ blength + gaweeks,
+      data = .x)),
+    fit_C = map(train, ~ lm(
+      bwt ~ bhead * blength * babysex,
+      data = .x)),
+
+    rmse_A = map2_dbl(fit_A, test, ~ rmse(model = .x, data = .y)),
+    rmse_B = map2_dbl(fit_B, test, ~ rmse(model = .x, data = .y)),
+    rmse_C = map2_dbl(fit_C, test, ~ rmse(model = .x, data = .y))
+  )
+
+
+cv_summary <- cv_results |>
+  select(starts_with("rmse_")) |>
+  pivot_longer(
+    cols = everything(),
+    names_to = "model",
+    values_to = "rmse"
+  ) |>
+  mutate(
+    model = recode(
+      model,
+      rmse_A = "Model A (main)",
+      rmse_B = "Model B (length + gaweeks)",
+      rmse_C = "Model C (bhead*blength*babysex)"
+    )
+  ) |>
+  group_by(model) |>
+  summarise(
+    mean_rmse = mean(rmse),
+    sd_rmse   = sd(rmse),
+    .groups   = "drop"
+  )
+
+cv_summary
+
+```
+
+Across the 100 Monte-Carlo cross-validation splits, Model C has the lowest mean RMSE, indicating the best predictive performance among the three models. Model A performs moderately well, with slightly higher prediction error, while Model B shows the largest RMSE and therefore the weakest predictive ability. Overall, incorporating interactions among head circumference, length, and sex (Model C) appears to improve prediction accuracy relative to the simpler models.
