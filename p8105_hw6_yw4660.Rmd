@@ -1,13 +1,15 @@
 ---
 title: "p8105_hw6_yw4660"
-output: html_document
+output: 
+  github_document:
+  html_document:
 ---
 
 ```{r import library, include=FALSE}
 library(tidyverse)
 library(ggplot2)
 ```
-#### Problem 1
+## Problem 1
 ```{r p1}
 homicides <- read_csv(
   "data/homicide-data.csv",
@@ -101,7 +103,7 @@ city_or |>
   theme_minimal()
 ```
 
-#### Problem 2
+## Problem 2
 
 ```{r p2 bootstrap distribution}
 library(tidyverse)
@@ -186,7 +188,7 @@ boot_summary
 ```
 Based on the bootstrap samples, the 95% percentile confidence interval for $R^2$ is roughly (0.935, 0.947), and the corresponding interval for $\frac{\hat{\beta}_1}{\hat{\beta}_2}$ is approximately (−281, −125). These intervals summarize the sampling variability of the two quantities under the bootstrap procedure.
 
-#### Problem3
+## Problem3
 
 ```{r p3}
 birth <- read.csv("data/birthweight.csv")
